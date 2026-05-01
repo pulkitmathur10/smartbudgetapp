@@ -6,6 +6,8 @@ import logging
 import os
 import re
 from typing import Any
+from google.auth.credentials import AnonymousCredentials
+from google.oauth2.credentials import Credentials
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +38,23 @@ def _ensure_vertex_init() -> tuple[str, str] | None:
     global _vertex_initialized
     if not vertex_llm_enabled():
         return None
-    project = (
-        os.environ.get("GOOGLE_CLOUD_PROJECT")
-        or os.environ.get("GCP_PROJECT")
-        or os.environ.get("VERTEX_PROJECT")
-        or ""
-    ).strip()
+
+    project = os.environ.get("VERTEX_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT") or ""
     location = _vertex_location()
+    token = os.environ.get("VERTEX_TOKEN", "").strip() # New Env Var
+
     try:
         import vertexai
-
         if not _vertex_initialized:
-            vertexai.init(project=project, location=location)
+            # If a token is provided, wrap it in a Credentials object
+            credentials = None
+            if token:
+                credentials = Credentials(token)
+            
+            # Pass the credentials object directly to init
+            vertexai.init(project=project, location=location, credentials=credentials)
             _vertex_initialized = True
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.exception("Vertex init failed: %s", e)
         return None
     return project, location
