@@ -3,3 +3,5 @@ Flask-SQLAlchemy
 Flask-Migrate
 Flask-Cors
 marshmallow
+APScheduler
+python-dateutil
