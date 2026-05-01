@@ -31,6 +31,8 @@ On first start, tables are created and default **expense** categories (Groceries
 | Inventory | GET, POST | `/inventory` |
 | Inventory | PUT, DELETE | `/inventory/<id>` |
 | Reorder list | GET | `/inventory/reorder` |
+| Purchase patterns | GET | `/inventory/patterns` — optional `?include_llm=1` (Vertex AI); habit-based stats from linked expenses, not consumption physics |
+| Expense + inventory insight | POST | `/insights/expense` — body `{"expense_id": <id>}`; returns `llm_insight` (Vertex) or `hint` if disabled / error |
 | Budgets | GET, POST | `/budgets` — `?month=&year=` |
 | Budgets | PUT, DELETE | `/budgets/<id>` |
 | Budget status | GET | `/budgets/status?month=&year=` |
@@ -42,6 +44,21 @@ On first start, tables are created and default **expense** categories (Groceries
 ### Inventory + expenses
 
 When you **POST** `/expense` with `inventory_item_id` and `qty`, the linked item’s `current_qty` is **increased** by `qty` (purchase / restock), and `last_purchased_at` is set to the expense date.
+
+### Vertex AI (optional prose)
+
+Install deps (`google-cloud-aiplatform`). Enable only when you want Gemini-generated copy on patterns / expense insights.
+
+| Variable | Example | Purpose |
+|----------|---------|---------|
+| `VERTEX_ENABLE` | `1` | Turn on LLM calls |
+| `GOOGLE_CLOUD_PROJECT` or `VERTEX_PROJECT` | `my-gcp-project` | GCP project |
+| `VERTEX_LOCATION` | `us-central1` | Vertex region |
+| `VERTEX_MODEL` | `gemini-2.0-flash` | Model id |
+
+Use **Application Default Credentials** (`gcloud auth application-default login` locally, or a service account JSON via `GOOGLE_APPLICATION_CREDENTIALS`). Enable the **Vertex AI API** on the project. Calls are billed per Vertex/Gemini pricing.
+
+**`/inventory/patterns?include_llm=1`** runs one batched Gemini request and fills `llm_insight` per item; without the flag, only deterministic `hint` and stats are returned (no GCP needed).
 
 ### Recurring jobs
 

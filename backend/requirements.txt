@@ -5,3 +5,4 @@ Flask-Cors
 marshmallow
 APScheduler
 python-dateutil
+google-cloud-aiplatform

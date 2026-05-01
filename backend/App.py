@@ -19,6 +19,7 @@ from models import (
     RecurringTransaction,
     db,
 )
+from inventory_patterns import build_all_inventory_patterns, compute_pattern_dict_for_item_id
 from schemas import (
     BudgetSchema,
     CategorySchema,
@@ -29,6 +30,11 @@ from schemas import (
     InvestmentSchema,
     InvestmentTransactionSchema,
     RecurringTransactionSchema,
+)
+from vertex_insights import (
+    attach_llm_insights_to_patterns,
+    generate_expense_inventory_insight,
+    vertex_llm_enabled,
 )
 
 DEFAULT_EXPENSE_CATEGORIES = [
@@ -391,6 +397,51 @@ def create_app():
             .all()
         )
         return jsonify(inventories_schema.dump(items))
+
+    @app.route("/inventory/patterns", methods=["GET"])
+    def inventory_patterns():
+        include_llm = request.args.get("include_llm", "").strip().lower() in ("1", "true", "yes")
+        rows = build_all_inventory_patterns(db.session)
+        if include_llm:
+            rows = attach_llm_insights_to_patterns(rows)
+        return jsonify({"items": rows})
+
+    @app.route("/insights/expense", methods=["POST"])
+    def expense_inventory_insight():
+        body = request.json or {}
+        eid = body.get("expense_id")
+        if eid is None:
+            return jsonify({"error": "expense_id required"}), 400
+        exp = Expense.query.get_or_404(int(eid))
+        item = None
+        if exp.inventory_item_id:
+            item = db.session.get(InventoryItem, exp.inventory_item_id)
+        pattern = None
+        if item:
+            pattern = compute_pattern_dict_for_item_id(db.session, item.id)
+            if pattern:
+                pattern = {k: v for k, v in pattern.items() if k != "llm_insight"}
+        cat_name = exp.category.name if exp.category else None
+        expense_summary = {
+            "id": exp.id,
+            "amount": float(exp.amount),
+            "date": exp.date.isoformat() if exp.date else None,
+            "notes": exp.notes,
+            "qty": float(exp.qty) if exp.qty is not None else None,
+            "inventory_item_id": exp.inventory_item_id,
+            "inventory_item_name": item.name if item else None,
+            "category_name": cat_name,
+            "payment_method": exp.payment_method,
+        }
+        text = generate_expense_inventory_insight(expense_summary, pattern)
+        hint = None
+        if not text:
+            hint = (
+                "Set VERTEX_ENABLE=1, GOOGLE_CLOUD_PROJECT (or VERTEX_PROJECT), VERTEX_LOCATION, and ADC credentials for AI text."
+                if not vertex_llm_enabled()
+                else "AI insight unavailable (check Vertex API, model name, and server logs)."
+            )
+        return jsonify({"llm_insight": text, "hint": hint})
 
     # --- Budgets ---
     @app.route("/budgets", methods=["GET"])
